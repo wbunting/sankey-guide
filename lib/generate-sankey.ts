@@ -22,7 +22,7 @@ export const generateSankey = (
   }
 ) => {
   return sankey()
-    .nodeId((node) => node.name)
+    .nodeId((node: any) => node.name)
     .nodeWidth(options.nodeWidth || 26)
     .nodePadding(4)
     .extent([

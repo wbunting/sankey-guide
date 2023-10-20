@@ -8,7 +8,7 @@ import NodeHeadless from "@/components/node-headless";
 import NodeLabelHeadless from "@/components/node-label-headless";
 
 type PrestyledProps = {
-  nodes: SankeyNode<{}, {}>[];
+  nodes: SankeyNode<{ name: string }, {}>[];
   links: SankeyLink<{}, {}>[];
   nodeWidth: number;
 } & {
