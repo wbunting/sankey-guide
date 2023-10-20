@@ -45,6 +45,7 @@ const SidebarComponents = () => {
       <div className="grid grid-flow-row text-sm auto-rows-max">
         {LINKS.map(l => (
           <Link
+            key={l.path}
             className={`flex items-center w-full px-2 py-1 border border-transparent rounded-md group hover:underline ${pathname === `/components/${l.path}`
               ? ""
               : "text-muted-foreground"
