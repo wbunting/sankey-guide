@@ -1,0 +1,500 @@
+import JobApplicationsSankey from "components/job-applications";
+import JobApplicationsSankeyServer from "components/job-applications-ssr";
+import JobApplicationsSankeyZoom from "components/job-applications-zoom";
+
+export default function Layout({ children }) {
+  return (
+    <div className="px-4 py-10 max-w-3xl mx-auto sm:px-6 sm:py-12 lg:max-w-4xl lg:py-16 lg:px-8 xl:max-w-6xl">
+      <article className="prose prose-stone prose-sm sm:prose-base lg:prose-lg dark:prose-invert mx-auto">
+        {children}
+      </article>
+    </div>
+  );
+}
+
+# A Guide to Sankey Charts in React
+
+Sankey charts primary function is to visualize the flow and distribution of resources or information, making them especially useful for understanding complex processes and relationships. This guide dives into the intricacies of creating these intriguing visuals using React and D3.
+
+## Why Sankey charts? What are they?
+
+Sankey charts, or Sankey diagrams, are a type of flow diagram characterized by their thick, curving lines and nodes. These charts are used to represent the distribution of resources or information, with the width of the lines indicating the volume or quantity of the flow. They're particularly useful in scenarios where you want to understand:
+
+- How resources or information move from one point or stage to another.
+- The efficiency of a process by comparing input and output values.
+- The distribution of certain attributes across a system.
+
+One of the most iconic applications of the Sankey chart is in illustrating energy flows, where they show the sources of energy, how it's distributed, and where it's consumed. But their utility isn't limited to just that; Sankey charts have found applications in finance, supply chain management, traffic flow analysis, and more.
+
+Here is an example chart that we will be building which shows the flow candidates through a recuriting process.
+
+<JobApplicationsSankey />
+
+## Why React?
+
+Why use React for Sankey charts when there are many examples using the d3-sankey package directly with D3?
+
+1. **Enhanced Interactivity**: React's state management and component lifecycle methods make it easier to add interactions to the Sankey diagrams. Whether it's drag and drop capabilities, clicking on nodes, or even tooltips, React can handle these with ease.
+
+2. **Integration with Existing React Codebases**: If you're already working with a React-based project, integrating a Sankey diagram becomes straightforward. Since React handles the rendering, all the usual patterns such as styling, state management, and data updates remain consistent.
+
+3. **Performance Optimizations**: React's virtual DOM ensures that only the components that change get re-rendered. This can lead to performance improvements, especially when dealing with large Sankey diagrams with frequent data updates.
+
+4. **Component Reusability**: React's component-based structure means you can create reusable Sankey chart components. This is especially useful if you need to render multiple Sankey charts with varying data or configurations.
+
+## Splitting sankey computation from rendering
+
+Creating a Sankey chart involves two primary steps: computing the paths and nodes based on data and rendering the visual representation of these computations. D3's `d3-sankey` package is excellent for the computational aspect, determining the positions, widths, and connections based on the provided data.
+
+However, once the computations are done, React can take over the rendering part. This separation allows developers to tap into the best of both worlds: D3's powerful data processing capabilities and React's efficient rendering and state management.
+
+## Preparing the data
+
+To create a sankey chart with d3-sankey we must first prepare our source data in a compatible format. D3 Sankey takes an object of nodes / links which represent the state of the sankey chart. Here is a formatted version of our sample data in the format that the sankey chart expects:
+
+```tsx
+import { csvParseRows } from "d3-dsv";
+import { SankeyGraph } from "d3-sankey";
+
+// this is what the SankeyGraph interface looks like,
+// and is the data-structure we need to aim for
+// when transforming the source data.
+// As you can see you can also attach extra properties to nodes / links
+// which may be handy for your particular sankey
+//
+// interface SankeyGraph<N extends SankeyExtraProperties, L extends SankeyExtraProperties> {
+//     /**
+//      * Array of Sankey diagram nodes
+//      */
+//     nodes: Array<SankeyNode<N, L>>;
+//     /**
+//      * Array of Sankey diagram links
+//      */
+//     links: Array<SankeyLink<N, L>>;
+// }
+
+const links = csvParseRows(
+  jobApplications,
+  ([source, target, valueString, linkColor = "gray"]) => {
+    const value = parseFloat(valueString);
+
+    return source && target
+      ? {
+          source,
+          target,
+          value: isNaN(value) ? 1 : value,
+          color: linkColor,
+        }
+      : null;
+  }
+);
+
+// We use the link data to generate a unique set of node names and pass through the links
+const linksToSankey = (links: Link[]): SankeyGraph<{}, {}> => {
+  const nodeByName = new Map;
+  for (const link of links) {
+    if (!nodeByName.has(link.source)) {
+      nodeByName.set(link.source, { name: link.source });
+    }
+    if (!nodeByName.has(link.target)) {
+      nodeByName.set(link.target, { name: link.target });
+    }
+  }
+
+  // We don't provide extra node or link data here so those
+  // SankeyExtraProperties types are empty objects
+  return = {
+    nodes: Array.from(nodeByName.values()),
+    links
+  };
+}
+
+// We don't provide extra node or link data here so those
+// SankeyExtraProperties types are empty objects
+const data: SankeyGraph<{}, {}> = linksToSankey(data);
+```
+
+In this example we actually use some simple csv maipulation functions to turn a csv where the rows represent each of the links into the chart
+
+```csv
+Berlin,Job Applications,102
+Barcelona,Job Applications,39
+Madrid,Job Applications,35
+Amsterdam,Job Applications,15
+Paris,Job Applications,14
+London,Job Applications,6
+Munich,Job Applications,5
+Brussels,Job Applications,4
+Dubai,Job Applications,3
+Dublin,Job Applications,3
+Other Cities,Job Applications,12
+Job Applications,No Response,189
+Job Applications,Responded,49,orange
+Responded,Rejected,38
+Responded,Interviewed,11,orange
+Interviewed,No Offer,8
+Interviewed,Declined Offer,2
+Interviewed,Accepted Offer,1,orange
+```
+
+This can be handy if the data powering your sankey chart comes in a row-by-row format like csv. You can simply do something like have a sql query that returns the proper links and have this data-parsing function do the rest of the data-setup for your sankey chart.
+
+## Rendering the sankey in React
+
+With the computations handled by D3, React can be used to render the SVG elements representing the nodes and paths of the Sankey diagram. This can be achieved using React's JSX syntax to define SVG elements and bind them to the computed data. In this section we will discuss two different rendering approaches client / server. The sankeys we will render are mostly the same, but there are some differences that are worth keeping in mind.
+
+For Client-side only rendering, the Sankey will not be visible when users first load your site / app, then the component will compute / mount / render the sankey. This has some benefits though. Because we are rendering ont he client side determining how large to render the sankey is easy, basically we can just measure the width / hight of the parent element in the DOM. There are other nice client-side only features that we will get to later like zoomable svgs that make client side a good choice for some use cases.
+
+One can also server side render the Sankey which will prevent the issue where on first load the sankey does not appear. This however has a major hurdle we need to overcome, when server rendering we don't know ahead of time how large the viewport that rendering will take place in is. So here we will show a small trick that renders the svg to a 100x100 size and then uses a second svg to scale up the 100x100 one to the size of the parent container (it is vector graphics after all).
+
+### Client Side Rendering / responsive sankey
+
+To start with we will render a Sanky client side at a fixed width / height. To do that you can split the skeleton / setup from the rendering with a headless component like:
+
+```tsx
+type SankeyPropsHeadless<
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+> = {
+  data: SankeyGraph<N, L>;
+  children:
+    | ((renderProps: {
+        nodes: any;
+        links: any;
+        nodeWidth: any;
+      }) => React.ReactNode)
+    | React.ReactNode;
+  width: number;
+  height: number;
+};
+
+const SankeyClientHeadless = <
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+>({
+  data,
+  children,
+  width,
+  height,
+}: SankeyPropsHeadless<N, L>): JSX.Element => {
+  const sankeyGenerator = generateSankey(width, height);
+  const { nodes, links } = sankeyGenerator(data);
+  const nodeWidth = sankeyGenerator.nodeWidth();
+
+  const renderProps = {
+    nodes,
+    links,
+    nodeWidth,
+  };
+
+  let content;
+
+  // Check if children is a function
+  if (typeof children === "function") {
+    content = children(renderProps);
+  }
+  // If children is a React component, clone it and pass renderProps as its props
+  else if (React.isValidElement(children)) {
+    content = React.cloneElement(children, renderProps);
+  }
+
+  return (
+    <svg width={width} height={height}>
+      {content}
+    </svg>
+  );
+};
+```
+
+What the above does is set up a sankey given the data, eg. generating the nodes and links and passes them along to the children of this component for rendering. Then we can use that data to render individual svg elements like `rect` and `path`
+
+```tsx
+const Sankey = <
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+>({
+  data,
+  width,
+  height,
+}: SankeyProps<N, L>): JSX.Element => {
+  return (
+    <SankeyClientHeadless data={data} width={width} height={height}>
+      {({ nodes, links, nodeWidth }) => (
+        <g style={{ font: `10px sans-serif` }}>
+          {links.map((link, i) => (
+            <Link key={i} link={link} />
+          ))}
+          {nodes.map((node, index) => (
+            <React.Fragment key={index}>
+              <Node node={node}>
+                {({ height: nodeHeight }) => (
+                  <rect
+                    height={nodeHeight}
+                    width={nodeWidth}
+                    x={node.x0}
+                    y={node.y0}
+                    stroke={"black"}
+                    fill="#a53253"
+                    fillOpacity={0.8}
+                    rx={0.9}
+                  />
+                )}
+              </Node>
+              <NodeLabel node={node} width={100}>
+                {({ x, y, textAnchor }) => (
+                  <text x={x} y={y} dy="0.35em" textAnchor={textAnchor}>
+                    {node.name}
+                    <tspan
+                      fillOpacity={0.7}
+                    >{` ${node.value.toLocaleString()}`}</tspan>
+                  </text>
+                )}
+              </NodeLabel>
+            </React.Fragment>
+          ))}
+        </g>
+      )}
+    </SankeyClientHeadless>
+  );
+};
+```
+
+With our earlier example data we can render the following Sankey:
+
+<JobApplicationsSankey />
+
+We have a version of the `SankeyClientHeadless` component as well as a `PrestyledSankey` which you can copy into your app.
+
+### Server Side Rendering
+
+There may be some cases in which you want to render the sankey on the server, but don't know the size in advance (the client component above will render fine on a server if you provide a fixed width and height). To make it possible to render the component on the server we can do a trick as mentioned before where we render a 100x100 svg and then wrap an ourter svg which will scale up the smaller 100x100 svg to fit inside whatever container it is rendered in. This creates a dynamically scalable but still server-side rendered sankey.
+
+<JobApplicationsSankeyServer />
+
+The implementation is mostly the same except for some of the svg wrapping logic:
+
+```tsx
+type SankeyServerProps<
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+> = {
+  data: SankeyGraph<N, L>;
+  options: {
+    margin: { top: number; right: number; bottom: number; left: number };
+  };
+};
+
+type SankeyServerHeadlessProps<
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+> = SankeyServerProps<N, L> & {
+  children: (renderProps: {
+    nodes: any;
+    links: any;
+    nodeWidth: any;
+  }) => React.ReactNode;
+};
+
+export const SankeyServerHeadless = <
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+>({
+  data,
+  children,
+  options = { margin: { top: 6, right: 8, bottom: 25, left: 25 } },
+}: SankeyServerHeadlessProps<N, L>): JSX.Element => {
+  const sankeyGenerator = generateSankey(100, 100, {
+    nodeWidth: 5,
+    nodePadding: 10,
+  });
+  const { nodes, links } = sankeyGenerator(data);
+  const nodeWidth = sankeyGenerator.nodeWidth();
+
+  const renderProps = {
+    nodes,
+    links,
+    nodeWidth,
+  };
+
+  let content;
+
+  // Check if children is a function
+  if (typeof children === "function") {
+    content = children(renderProps);
+  }
+  // If children is a React component, clone it and pass renderProps as its props
+  else if (React.isValidElement(children)) {
+    content = React.cloneElement(children, renderProps);
+  }
+
+  return (
+    <div
+      className="@container relative h-full w-full"
+      style={
+        {
+          "--marginTop": `${options.margin.top}px`,
+          "--marginRight": `${options.margin.right}px`,
+          "--marginBottom": `${options.margin.bottom}px`,
+          "--marginLeft": `${options.margin.left}px`,
+        } as CSSProperties
+      }
+    >
+      <svg
+        className="absolute inset-0
+          h-[calc(100%-var(--marginTop)-var(--marginBottom))]
+          w-[calc(100%-var(--marginLeft)-var(--marginRight))]
+          translate-x-[var(--marginLeft)]
+          translate-y-[var(--marginTop)]
+          overflow-visible
+        "
+      >
+        <svg
+          viewBox="0 0 100 100"
+          className="overflow-visible"
+          preserveAspectRatio="none"
+        >
+          {content}
+        </svg>
+      </svg>
+    </div>
+  );
+};
+
+export const SankeyServer = <
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+>({
+  data,
+  options = { margin: { top: 6, right: 8, bottom: 25, left: 25 } },
+}: SankeyServerProps<N, L>): JSX.Element => {
+  return (
+    <SankeyServerHeadless data={data} options={options}>
+      {(renderProps) => <PrestyledSankey {...renderProps} fontSize={2} />}
+    </SankeyServerHeadless>
+  );
+};
+```
+
+Here we have done the relevant styling using css variables in combination with tailwindcss, but you could just manually pass a `style` property to the React component if you are not using Tailwind.
+
+## (Advanced) Adding interactivity
+
+Enhancing your Sankey diagrams with interactive features can significantly improve user engagement and provide deeper insights into the data.
+
+### Zoomable Sankey
+
+Despite the nicities of the automatic sankey algorithm provided by D3 which tries to arrange things in a pleasing visual structure, very complex Sankey diagrams can end up with hard to read / grasp links and nodes. To address this we also built a zoomable sankey which can be used for easier viewing.
+
+<JobApplicationsSankeyZoom />
+
+To build the zooming function we use some css zooming helpers from `@visx/zoom`:
+
+```tsx
+// specify the initial location / scale of the zoom into the sankey
+const initialTransform = {
+  scaleX: 1.27,
+  scaleY: 1.27,
+  translateX: -211.62,
+  translateY: 162.59,
+  skewX: 0,
+  skewY: 0,
+};
+
+export const ZoomSankey = <
+  N extends SankeyExtraProperties,
+  L extends SankeyExtraProperties
+>({
+  data,
+  width,
+  height,
+}: SankeyProps<N, L>): JSX.Element => {
+  return (
+    <Zoom<SVGSVGElement>
+      width={width}
+      height={height}
+      scaleXMin={1 / 2}
+      scaleXMax={4}
+      scaleYMin={1 / 2}
+      scaleYMax={4}
+      initialTransformMatrix={initialTransform}
+    >
+      {(zoom) => (
+        <div className="relative">
+          <SankeyClientHeadless
+            data={data}
+            width={width}
+            height={height}
+            style={{
+              cursor: zoom.isDragging ? "grabbing" : "grab",
+              touchAction: "none",
+            }}
+            ref={zoom.containerRef}
+          >
+            {(renderProps) => (
+              <>
+                <g transform={zoom.toString()}>
+                  <PrestyledSankey {...renderProps} />
+                </g>
+                <rect
+                  width={width}
+                  height={height}
+                  rx={14}
+                  fill="transparent"
+                  onTouchStart={zoom.dragStart}
+                  onTouchMove={zoom.dragMove}
+                  onTouchEnd={zoom.dragEnd}
+                  onMouseDown={zoom.dragStart}
+                  onMouseMove={zoom.dragMove}
+                  onMouseUp={zoom.dragEnd}
+                  onMouseLeave={() => {
+                    if (zoom.isDragging) zoom.dragEnd();
+                  }}
+                  onDoubleClick={(event) => {
+                    const point = { x: 0, y: 0 };
+                    zoom.scale({ scaleX: 1.1, scaleY: 1.1, point });
+                  }}
+                />
+              </>
+            )}
+          </SankeyClientHeadless>
+          <div className="absolute top-4 right-4 flex flex-col items-end space-y-2">
+            <div className="flex space-x-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => zoom.scale({ scaleX: 1.2, scaleY: 1.2 })}
+              >
+                +
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => zoom.scale({ scaleX: 0.8, scaleY: 0.8 })}
+              >
+                -
+              </Button>
+            </div>
+            <Button type="button" variant="secondary" onClick={zoom.center}>
+              Center
+            </Button>
+            <Button type="button" variant="secondary" onClick={zoom.reset}>
+              Reset
+            </Button>
+            <Button type="button" variant="secondary" onClick={zoom.clear}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+    </Zoom>
+  );
+};
+```
+
+### (TODO) Side-effect on node press
+
+Clicking on a node can trigger various side-effects. For instance, you might want to display additional details about a node in a tooltip or a modal. With React, this can be easily managed using state and event handlers.
+
+### (TODO) Drag and Drop
+
+One of the appealing features of Sankey diagrams is the ability to drag nodes to rearrange the flow. This can be achieved using a combination of mouse event handlers in React and D3's drag functionality.

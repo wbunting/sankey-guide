@@ -1,0 +1,61 @@
+# PrestyledSankey
+
+A sample pre-styled sankey diagram designed to get you started. You should copy / paste this into your repo and then make modifications so that the style is as you like for your particular sankey.
+
+```tsx
+type PrestyledProps = {
+  nodes: SankeyNode<{}, {}>[];
+  links: SankeyLink<{}, {}>[];
+  nodeWidth: number;
+} & {
+  fontSize?: number;
+};
+
+const PrestyledSankey: React.FC<PrestyledProps> = ({
+  nodes,
+  links,
+  nodeWidth,
+  fontSize = 10,
+}) => (
+  <g style={{ font: `${fontSize}px sans-serif` }}>
+    {links.map((link, i) => (
+      <Link key={i} link={link}>
+        {({ path }) => (
+          <path
+            d={path}
+            stroke="#ffffff"
+            fill="none"
+            strokeOpacity={0.1}
+            strokeWidth={link.width}
+          />
+        )}
+      </Link>
+    ))}
+    {nodes.map((node, index) => (
+      <React.Fragment key={index}>
+        <Node node={node}>
+          {({ height: nodeHeight }) => (
+            <rect
+              height={nodeHeight}
+              width={nodeWidth}
+              x={node.x0}
+              y={node.y0}
+              stroke={"black"}
+              fill="#a53253"
+              fillOpacity={0.8}
+              rx={0.9}
+            />
+          )}
+        </Node>
+        <NodeLabel node={node} width={100}>
+          {({ x, y, textAnchor }) => (
+            <text x={x} y={y} dy="0.35em" textAnchor={textAnchor} fill="white">
+              {node.name}
+            </text>
+          )}
+        </NodeLabel>
+      </React.Fragment>
+    ))}
+  </g>
+);
+```
